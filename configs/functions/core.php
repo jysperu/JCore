@@ -1110,3 +1110,519 @@ if ( ! function_exists('_autoload'))
 		class_exists($main_class, FALSE) === FALSE and class_exists($alter_class , FALSE) === TRUE and class_alias($alter_class , $main_class);
 	}
 }
+
+if ( ! function_exists('request'))
+{
+	/**
+	 * request()
+	 * Obtiene los request ($_GET $_POST)
+	 *
+	 * @param	string	$get
+	 * @return	mixed
+	 */
+	function &request($get = 'array', $default = NULL, $put_default_if_empty = TRUE)
+	{
+		static $datos = [];
+		
+		if (count($datos) === 0)
+		{
+			try
+			{
+				$PInput = (array)json_decode(file_get_contents('php://input'), true);
+			}
+			catch(Exception $e)
+			{
+				$PInput = [];
+			}
+
+			$datos = array_merge(
+				$_REQUEST,
+				$_GET,
+				$_POST,
+				$PInput
+			);
+
+			$path = explode('/', url('path'));
+			foreach($path as $_p)
+			{
+				if (preg_match('/(.+)(:|=)(.*)/i', $_p, $matches))
+				{
+					$datos[$matches[1]] = $matches[3];
+				}
+			}
+		}
+		
+		if ($get === 'array')
+		{
+			return $datos;
+		}
+		
+		$get = (array)$get;
+		
+		$return = $datos;
+		foreach($get as $_get)
+		{
+			if ( ! isset($return[$_get]))
+			{
+				$return = $default;
+				break;
+			}
+			
+			if (is_empty($return[$_get]) and $put_default_if_empty)
+			{
+				$return = $default;
+				break;
+			}
+			
+			$return = $return[$_get];
+		}
+		
+		return $return;
+	}
+}
+
+if ( ! function_exists('url'))
+{
+	/**
+	 * url()
+	 * Obtiene la estructura y datos importantes de la URL
+	 *
+	 * @param	string	$get
+	 * @return	mixed
+	 */
+	function &url($get = 'base')
+	{
+		static $datos = [];
+		
+		if (count($datos) === 0)
+		{
+			$file = __FILE__;
+			
+			//Archivo index que se ha leído originalmente
+			$script_name = $_SERVER['SCRIPT_NAME'];
+			
+			//Variable indica si el index.php controlador esta dentro de una subcarpeta de donde se va a leer
+			defined('SUBPATH') or define('SUBPATH', DS);
+			
+			//Si el archivo index está dentro de una carpeta desde la raiz (/)
+			//No reemplaza la variable SUBPATH
+			$uri_subpath = rtrim(str_replace('\\', '/', str_replace(basename($script_name), '', $script_name)), '/');
+			$datos['uri_subpath'] = $uri_subpath;
+
+			//Devuelve si usa https (boolean)
+			$datos['https'] = FALSE;
+			if (
+				( ! empty($_SERVER['HTTPS']) && mb_strtolower($_SERVER['HTTPS']) !== 'off') ||
+				(isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && mb_strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https') ||
+				( ! empty($_SERVER['HTTP_FRONT_END_HTTPS']) && mb_strtolower($_SERVER['HTTP_FRONT_END_HTTPS']) !== 'off') ||
+				(isset($_SERVER['REQUEST_SCHEME']) and $_SERVER['REQUEST_SCHEME'] === 'https')
+			)
+			{
+				$datos['https'] = TRUE;
+			}
+
+			isset($_SERVER['REQUEST_SCHEME']) or $_SERVER['REQUEST_SCHEME'] = 'http' . ($datos['https'] ? 's' : '');
+
+			$_parsed = $_SERVER['REQUEST_SCHEME'] . '://' . $_SERVER['HTTP_HOST'] . ':' . $_SERVER['SERVER_PORT'] . $_SERVER['REQUEST_URI'];
+			$_parsed = parse_url($_parsed);
+			
+			//Devuelve 'http' o 'https' (string)
+			$datos['scheme'] = $_parsed['scheme'];
+			
+			//Devuelve el host (string)
+			$datos['host'] = $_parsed['host'];
+			
+			//Devuelve el port (int)
+			$datos['port'] = $_parsed['port'];
+			
+			isset($_parsed['user']) and $datos['user'] = $_parsed['user'];
+			isset($_parsed['pass']) and $datos['pass'] = $_parsed['pass'];
+			
+			$datos['path'] = isset($_parsed['path']) ? $_parsed['path'] : '/';
+			empty($uri_subpath) or $datos['path'] = str_replace($uri_subpath, '', $datos['path']);
+			
+			$datos['query'] = isset($_parsed['query']) ? $_parsed['query'] : '';
+			$datos['fragment'] = isset($_parsed['fragment']) ? $_parsed['fragment'] : '';
+			
+			//Devuelve el port en formato enlace (string)		:8082	para el caso del port 80 o 443 retorna vacío
+			$datos['port-link'] = (new class($datos) implements JsonSerializable {
+				private $datos;
+				
+				public function __construct(&$datos)
+				{
+					$this->datos =& $datos;
+				}
+				
+				public function __toString()
+				{
+					$port_link = '';
+					if ($this->datos['port'] <> 80 and $this->datos['port'] <> 443)
+					{
+						$port_link = ':' . $this->datos['port'];
+					}
+					return $port_link;
+				}
+				
+				public function __debugInfo()
+				{
+					return [
+						'port' => $this->datos['port'],
+						'port-link' => $this->__toString()
+					];
+				}
+
+				public function jsonSerialize() {
+					return $this->__toString();
+				}
+			});
+			
+			//Devuelve si usa WWW (boolean)
+			$datos['www'] = (bool)preg_match('/^www\./', $datos['host']);
+			
+			//Devuelve el base host (string)
+			$datos['host-base'] = (new class($datos) implements JsonSerializable{
+				private $datos;
+				
+				public function __construct(&$datos)
+				{
+					$this->datos =& $datos;
+				}
+				
+				public function __toString()
+				{
+					$host_base = explode('.', $this->datos['host']);
+					
+					while (count($host_base) > 2)
+					{
+						array_shift($host_base);
+					}
+					
+					$host_base = implode('.', $host_base);
+					
+					return $host_base;
+				}
+				
+				public function __debugInfo()
+				{
+					return [
+						'host' => $this->datos['host'],
+						'host-base' => $this->__toString()
+					];
+				}
+
+				public function jsonSerialize() {
+					return $this->__toString();
+				}
+			});
+			
+			//Devuelve el host mas el port (string)			intranet.net:8082
+			$datos['host-link'] = (new class($datos) implements JsonSerializable{
+				private $datos;
+				
+				public function __construct(&$datos)
+				{
+					$this->datos =& $datos;
+				}
+				
+				public function __toString()
+				{
+					$host_link = $this->datos['host'] . $this->datos['port-link'];
+					return $host_link;
+				}
+				
+				public function __debugInfo()
+				{
+					return [
+						'host' => $this->datos['host'],
+						'port-link' => (string)$this->datos['port-link'],
+						'host-link' => $this->__toString()
+					];
+				}
+
+				public function jsonSerialize() {
+					return $this->__toString();
+				}
+			});
+			
+			//Devuelve el host sin puntos o guiones	(string)	intranetnet
+			$datos['host-clean'] = (new class($datos) implements JsonSerializable{
+				private $datos;
+				
+				public function __construct(&$datos)
+				{
+					$this->datos =& $datos;
+				}
+				
+				public function __toString()
+				{
+					$host_clean = preg_replace('/[^a-z0-9]/i', '', $this->datos['host']);
+					return $host_clean;
+				}
+				
+				public function __debugInfo()
+				{
+					return [
+						'host' => $this->datos['host'],
+						'host-clean' => $this->__toString()
+					];
+				}
+
+				public function jsonSerialize() {
+					return $this->__toString();
+				}
+			});
+			
+			//Devuelve el scheme mas el host-link (string)	https://intranet.net:8082
+			$datos['host-uri'] = (new class($datos) implements JsonSerializable{
+				private $datos;
+				
+				public function __construct(&$datos)
+				{
+					$this->datos =& $datos;
+				}
+				
+				public function __toString()
+				{
+					$host_uri = $this->datos['scheme'] . '://' . $this->datos['host-link'];
+					return $host_uri;
+				}
+				
+				public function __debugInfo()
+				{
+					return [
+						'scheme' => $this->datos['scheme'],
+						'host-link' => (string)$this->datos['host-link'],
+						'host-uri' => $this->__toString()
+					];
+				}
+
+				public function jsonSerialize() {
+					return $this->__toString();
+				}
+			});
+			
+			//Devuelve la URL base hasta la aplicación
+			$datos['base'] = (new class($datos, $uri_subpath) implements JsonSerializable{
+				private $datos;
+				private $uri_subpath;
+				
+				public function __construct(&$datos, $uri_subpath)
+				{
+					$this->datos =& $datos;
+					$this->uri_subpath = $uri_subpath;
+				}
+				
+				public function __toString()
+				{
+					$base = $this->datos['host-uri'] . $this->uri_subpath;
+					return $base;
+				}
+				
+				public function __debugInfo()
+				{
+					return [
+						'host-uri' => (string)$this->datos['host-uri'],
+						'uri_subpath' => $this->uri_subpath,
+						'base' => $this->__toString()
+					];
+				}
+
+				public function jsonSerialize() {
+					return $this->__toString();
+				}
+			});
+			
+			//Devuelve la URL base hasta el alojamiento real de la aplicación
+			$datos['subpath'] = rtrim(str_replace('\\', '/', SUBPATH), '/');
+			
+			//Devuelve la URL base hasta el alojamiento real de la aplicación
+			$datos['abs'] = (new class($datos, $uri_subpath) implements JsonSerializable{
+				private $datos;
+				private $uri_subpath;
+				private $subpath;
+				
+				public function __construct(&$datos, $uri_subpath)
+				{
+					$this->datos =& $datos;
+					$this->uri_subpath = $uri_subpath;
+				}
+				
+				public function __toString()
+				{
+					$abs = $this->datos['host-uri'] . $this->uri_subpath . $this->datos['subpath'];
+					return $abs;
+				}
+				
+				public function __debugInfo()
+				{
+					return [
+						'host-uri' => (string)$this->datos['host-uri'],
+						'uri_subpath' => $this->uri_subpath,
+						'subpath' => $this->datos['subpath'],
+						'abs' => $this->__toString()
+					];
+				}
+
+				public function jsonSerialize() {
+					return $this->__toString();
+				}
+			});
+			
+			//Devuelve la URL base hasta el alojamiento real de la aplicación
+			$datos['host-abs'] = (new class($datos, $uri_subpath) implements JsonSerializable{
+				private $datos;
+				private $uri_subpath;
+				private $subpath;
+				
+				public function __construct(&$datos, $uri_subpath)
+				{
+					$this->datos =& $datos;
+					$this->uri_subpath = $uri_subpath;
+				}
+				
+				public function __toString()
+				{
+					$abs = str_replace('www.', '', $this->datos['host']) . $this->uri_subpath;
+					return $abs;
+				}
+				
+				public function __debugInfo()
+				{
+					return [
+						'host' => (string)$this->datos['host'],
+						'uri_subpath' => $this->uri_subpath,
+						'host-abs' => $this->__toString()
+					];
+				}
+
+				public function jsonSerialize() {
+					return $this->__toString();
+				}
+			});
+			
+			//Devuelve la URL completa incluido el PATH obtenido
+			$datos['full'] = (new class($datos) implements JsonSerializable{
+				private $datos;
+				
+				public function __construct(&$datos)
+				{
+					$this->datos =& $datos;
+				}
+				
+				public function __toString()
+				{
+					$full = $this->datos['base'] . $this->datos['path'];
+					
+					return $full;
+				}
+				
+				public function __debugInfo()
+				{
+					return [
+						'base' => (string)$this->datos['base'],
+						'path' => $this->datos['path'],
+						'full' => $this->__toString()
+					];
+				}
+
+				public function jsonSerialize() {
+					return $this->__toString();
+				}
+			});
+			
+			//Devuelve la URL completa incluyendo los parametros QUERY si es que hay
+			$datos['full-wq'] = (new class($datos) implements JsonSerializable{
+				private $datos;
+				
+				public function __construct(&$datos)
+				{
+					$this->datos =& $datos;
+				}
+				
+				public function __toString()
+				{
+					$full_wq = $this->datos['full'] . ( ! empty($this->datos['query']) ? '?' : '' ) . $this->datos['query'];
+					
+					return $full_wq;
+				}
+				
+				public function __debugInfo()
+				{
+					return [
+						'full' => (string)$this->datos['full'],
+						'query' => $this->datos['query'],
+						'full-wq' => $this->__toString()
+					];
+				}
+
+				public function jsonSerialize() {
+					return $this->__toString();
+				}
+			});
+			
+			//Devuelve la ruta de la aplicación como directorio del cookie
+			$datos['cookie-base'] = $uri_subpath . '/';
+			
+			//Devuelve la ruta de la aplicación como directorio del cookie hasta la carpeta de la ruta actual
+			$datos['cookie-full'] = (new class($datos, $uri_subpath) implements JsonSerializable{
+				private $datos;
+				private $uri_subpath;
+				
+				public function __construct(&$datos, $uri_subpath)
+				{
+					$this->datos =& $datos;
+					$this->uri_subpath = $uri_subpath;
+				}
+				
+				public function __toString()
+				{
+					$cookie_full = $this->uri_subpath . rtrim($this->datos['path'], '/') . '/';
+					return $cookie_full;
+				}
+				
+				public function __debugInfo()
+				{
+					return [
+						'uri_subpath' => $this->uri_subpath,
+						'path' => $this->datos['path'],
+						'cookie-full' => $this->__toString()
+					];
+				}
+
+				public function jsonSerialize() {
+					return $this->__toString();
+				}
+			});
+			
+			//Obtiene todos los datos enviados
+			$datos['request'] =& request('array');
+			
+			//Request Method
+			$datos['request_method'] = mb_strtoupper(isset($_SERVER['REQUEST_METHOD']) ? $_SERVER['REQUEST_METHOD'] : 'cli');
+			
+//			$datos['array'] =& $datos;
+		}
+
+		if ($get === 'array')
+		{
+			return $datos;
+		}
+
+		isset($datos[$get]) or $datos[$get] = NULL;
+		return $datos[$get];
+	}
+}
+
+
+if ( ! function_exists('APP'))
+{
+	/**
+	 * APP()
+	 * Retorna la instancia del APP
+	 * @return	APP
+	 */
+	function APP()
+	{
+		return APP::instance();
+	}
+}

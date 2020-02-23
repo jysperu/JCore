@@ -276,6 +276,8 @@ load_file ('functions/BenchMark');
  */
 load_file ('config/hooks');
 
+APP();
+
 Router::instance()
 	-> process();
 

@@ -112,7 +112,11 @@ if ( ! function_exists('load_file'))
 			if ($all_files_of_dir)
 			{
 				// Escaneamos todo el directorio
-				if (file_exists($_temp_path))
+				if (file_exists($_temp_path . DS . ENVIRONMENT))
+				{
+					$_files = @scandir ($_temp_path . DS . ENVIRONMENT, $scandir_sorting_order);
+				}
+				elseif (file_exists($_temp_path))
 				{
 					$_files = @scandir ($_temp_path, $scandir_sorting_order);
 				}
@@ -152,15 +156,27 @@ if ( ! function_exists('load_file'))
 				continue;
 			}
 			
-			$_temp = $_temp_path . DS . $file;
-			
-			file_exists($_temp) and
-			$lista[] = $_temp;
+			$_temp = $_temp_path . DS . ENVIRONMENT . DS . $file;
+			if (file_exists($_temp) or file_exists($_temp . '.php'))
+			{
+				file_exists($_temp) and
+				$lista[] = $_temp;
 
-			file_exists($_temp . '.php') and
-			$lista[] = $_temp . '.php';
+				file_exists($_temp . '.php') and
+				$lista[] = $_temp . '.php';
+			}
+			else
+			{
+				$_temp = $_temp_path . DS . $file;
+
+				file_exists($_temp) and
+				$lista[] = $_temp;
+
+				file_exists($_temp . '.php') and
+				$lista[] = $_temp . '.php';
+			}
 		}
-		
+
 		if ($return_list)
 		{
 			return $lista;
